@@ -1,0 +1,43 @@
+WireGuard Troubleshooting & Debugging Guide
+When building a VPN gateway, failures usually happen at one of three levels: the Handshake, the Forwarding, or the MTU.
+
+1. Handshake Failures (The Connection)
+Symptoms: sudo wg show shows no "latest handshake" or no data transfer.
+
+Check the Port: Ensure UDP port 51820 is open on the Ubuntu Server firewall (ufw allow 51820/udp).
+
+Check Endpoints: Ensure the Kali config has the correct Public IP of the Ubuntu server.
+
+Key Mismatch: Double-check that the PublicKey in Kali's [Peer] section matches the privatekey generated on Ubuntu.
+
+2. The "No Internet" Issue (The Routing)
+Symptoms: Handshake is successful, you can ping the server (10.200.200.1), but you cannot reach google.com.
+
+IP Forwarding: On Ubuntu, run cat /proc/sys/net/ipv4/ip_forward. If it shows 0, forwarding is off.
+
+Fix: sudo sysctl -w net.ipv4.ip_forward=1
+
+NAT Rules: Ensure the iptables rules are active.
+
+Check: sudo iptables -t nat -L -v -n
+
+Fix: Look for the MASQUERADE rule. If missing, the server is receiving Kali's packets but doesn't know how to send them to the internet.
+
+3. The "Slow Loading" or "Broken Web" Issue (The MTU)
+Symptoms: ping works perfectly, but the Firefox browser hangs or sites only half-load.
+
+The Cause: WireGuard adds a 60-80 byte header to every packet. If the packet plus the header exceeds the limit of your virtual network (usually 1500 bytes), the packet is dropped.
+
+The Fix: Set MTU = 1280 in the [Interface] section of the Kali config. This leaves plenty of room for the encryption headers.
+
+4. DNS Leaks (The Privacy)
+Symptoms: You have the VPN IP, but dnsleaktest.com shows your real home ISP.
+
+The Fix: Ensure the resolvconf package is installed on Kali and that DNS = 1.1.1.1 is in your wg0.conf. This forces the OS to ignore your local router's DNS settings.
+
+5. Kill-Switch Lockdown
+Symptoms: You can't connect to the VPN because the firewall is blocking it.
+
+The Logic: The Kill-Switch must allow the encrypted tunnel packets to leave via eth0, but block everything else.
+
+Verification: Run sudo ufw status verbose. You should see ALLOW OUT for port 51820/udp specifically.
