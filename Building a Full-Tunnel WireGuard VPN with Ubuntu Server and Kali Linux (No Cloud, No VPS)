@@ -1,0 +1,40 @@
+I recently completed a hands-on networking and security project where I transformed a standard Ubuntu Server into a fully functional, full-tunnel VPN gateway using WireGuard. The goal was simple but challenging: route 100% of a client's traffic through an encrypted tunnel without relying on any cloud services or VPS infrastructure. Everything was built locally using virtual machines.
+This project pushed me deep into Linux networking fundamentals and helped me understand how modern VPNs actually work under the hood - not just how to install them.
+Why I Built This Project
+Most VPN tutorials depend on cloud providers, one-click scripts, or managed services. I wanted to strip all of that away and build a VPN from first principles using only open-source tools and local machines.
+The challenge was to force all traffic from a Kali Linux client through an Ubuntu Server gateway, encrypt it end-to-end, perform NAT on the server side, and ensure that the client's public internet identity matched the VPN server - not the client.
+Architecture Overview
+The setup consists of two virtual machines: a Kali Linux system acting as the VPN client and an Ubuntu Server acting as the VPN gateway. The two systems communicate through an encrypted WireGuard tunnel. Once traffic reaches the Ubuntu server, it is forwarded, NATed, and sent to the internet.
+From the client's perspective, the VPN becomes the default gateway. Every packet - DNS queries, HTTP requests, ICMP traffic - flows through the tunnel.
+Environment and Network Design
+WireGuard is used as the VPN protocol due to its simplicity, performance, and modern cryptography. The VPN operates on a private subnet, 10.200.200.0/24. The Ubuntu server is assigned 10.200.200.1, while the Kali client uses 10.200.200.2.
+The virtual machines use bridged or NAT networking, allowing the Ubuntu server to act as a real gateway for outbound traffic.
+Cryptography and Authentication Model
+One of the most impressive aspects of WireGuard is its clean security design. There are no usernames, passwords, or certificates. Authentication is purely key-based.
+Each peer generates its own private and public key pair. The private key never leaves the host. During communication, peers authenticate and encrypt traffic using Curve25519 for key exchange, ChaCha20 for encryption, and Poly1305 for message authentication.
+This design significantly reduces attack surface while maintaining strong cryptographic guarantees.
+Ubuntu Server as the VPN Gateway
+The Ubuntu Server is responsible for accepting VPN connections, routing traffic from the VPN interface to the internet, and performing network address translation.
+IP forwarding is enabled at the kernel level to allow packets to move between interfaces. iptables rules are configured to masquerade VPN traffic as it exits through the server's primary network interface. WireGuard listens on UDP port 51820, keeping exposure minimal.
+Once configured, the server behaves like a secure router with encryption built in.
+Kali Linux as a Full-Tunnel Client
+On the Kali side, the WireGuard client is configured to send all traffic through the VPN by setting the allowed IP range to 0.0.0.0/0. This single line is what transforms the setup from split tunneling to a full tunnel.
+When the tunnel comes up, the default route is automatically moved to the WireGuard interface. DNS is also forced through the tunnel to prevent leaks, and persistent keepalive packets are enabled to maintain NAT stability.
+From the user's perspective, the VPN is transparent - everything just works through the tunnel.
+How Full Tunneling Works
+Full tunneling is achieved by instructing the client to treat the VPN as the default route. Once connected, the system routes all outbound traffic through the WireGuard interface instead of the physical network interface.
+This ensures that no traffic bypasses the VPN accidentally. Even DNS requests are encrypted and routed through the server before reaching the internet.
+Verification and Testing
+To verify connectivity, I first confirmed that the client could reach the VPN server over the tunnel. I then checked the routing table to ensure the default route pointed to the WireGuard interface.
+Internet access was tested by pinging external IPs and checking the public IP address from the client. The results showed that the client appeared to the internet as the Ubuntu server, confirming that NAT and routing were functioning correctly.
+The WireGuard status command confirmed active handshakes and encrypted data transfer, proving that traffic was not only routed correctly but also securely encrypted.
+Security Considerations
+Security was a core focus of this project. Private keys are never transmitted or shared. Only a single UDP port is exposed on the server. There is no password-based authentication, reducing brute-force risk.
+All traffic between client and server is encrypted end-to-end, and the setup can be extended with firewall-based kill switches to prevent traffic leaks if the VPN goes down.
+Skills Demonstrated
+This project strengthened my understanding of Linux networking, VPN architecture, routing tables, NAT, and secure key management. It also required hands-on troubleshooting of real networking issues such as DNS failures, routing conflicts, and NAT misconfigurations.
+Beyond the technical side, it demonstrates my ability to document complex systems clearly and build production-style infrastructure from scratch.
+Future Improvements
+There are many ways this project can be extended. Support for multiple clients, firewall-based kill switches, split tunneling, logging and monitoring, IPv6 support, and deployment on a VPS or cloud platform are all natural next steps.
+Final Thoughts
+Building a full-tunnel VPN without cloud services gave me a deep appreciation for how encrypted tunneling, routing, and Linux networking work together. This project moved me beyond "VPN user" and into "VPN builder," and it's one of the most educational networking exercises I've completed so far.
