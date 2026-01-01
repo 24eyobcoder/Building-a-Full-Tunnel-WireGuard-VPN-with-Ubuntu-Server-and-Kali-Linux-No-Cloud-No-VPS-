@@ -1,0 +1,82 @@
+
+Part 1: Ubuntu Server Configuration (The Gateway)
+The server acts as the "exit node." It receives encrypted traffic from Kali, decrypts it, and forwards it to the public internet.
+
+Step 1: Install and Generate Keys
+Bash
+
+sudo apt update && sudo apt install wireguard -y
+# Generate private and public keys
+umask 077
+wg genkey | tee privatekey | wg pubkey > publickey
+Step 2: Enable IPv4 Forwarding
+By default, Linux acts as an endpoint, not a router. We must tell the kernel to allow packets to jump from the VPN interface to the internet interface.
+
+Bash
+
+sudo sysctl -w net.ipv4.ip_forward=1
+# Make it permanent
+echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
+Step 3: Create /etc/wireguard/wg0.conf
+Ini, TOML
+
+[Interface]
+PrivateKey = <Ubuntu_Private_Key>
+Address = 10.200.200.1/24
+ListenPort = 51820
+
+# NAT Rules: These "Mask" the Kali IP with the Server IP
+# Replace 'eth0' with your actual interface name (check with 'ip a')
+PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+
+[Peer]
+# Kali Linux VM
+PublicKey = <Kali_Public_Key>
+AllowedIPs = 10.200.200.2/32
+
+##################################################################################################
+Part 2: Kali Linux Configuration (The Client)
+The client is configured for "Full Tunneling," meaning all internet traffic is sucked into the encrypted tunnel.
+
+Step 1: Install and Generate Keys
+Bash
+
+sudo apt update && sudo apt install wireguard resolvconf -y
+umask 077
+wg genkey | tee privatekey | wg pubkey > publickey
+Step 2: Create /etc/wireguard/wg0.conf
+Ini, TOML
+
+[Interface]
+PrivateKey = <Kali_Private_Key>
+Address = 10.200.200.2/24
+DNS = 1.1.1.1
+MTU = 1280
+
+[Peer]
+PublicKey = <Ubuntu_Public_Key>
+Endpoint = <Ubuntu_Public_IP>:51820
+# 0.0.0.0/0 forces ALL traffic through the tunnel (Full Tunnel)
+AllowedIPs = 0.0.0.0/0
+PersistentKeepalive = 25
+Part 3: The Security "Kill-Switch" (Kali Only)
+This prevents "Identity Leaks." If the VPN goes down, the internet is cut off.
+
+Bash
+sudo ufw default deny outgoing
+sudo ufw default deny incoming
+# Allow only the connection to the VPN server
+sudo ufw allow out to <Ubuntu_Public_IP> port 51820 proto udp
+# Allow all traffic inside the tunnel
+sudo ufw allow out on wg0 to any
+sudo ufw enable
+Summary of the Architecture Logic
+Encryption: Kali wraps a packet in a WireGuard header and encrypts it using the Ubuntu Public Key.
+Transit: The packet travels over the "dirty" public internet as a standard UDP packet on port 51820.
+Decapsulation: Ubuntu receives the packet, recognizes it as a valid WireGuard peer, and decrypts it.
+Forwarding (NAT): The iptables rule on Ubuntu changes the "Source Address" from 10.200.200.2 to the Ubuntu Server's IP.
+
+
+PublicKey = <Kali_Public_Key>
+AllowedIPs = 10.200.200.2/32
